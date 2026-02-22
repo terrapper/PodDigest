@@ -14,6 +14,10 @@ export const subscribeSchema = z.object({
   priority: z.enum(["MUST", "PREFERRED", "NICE"]).default("PREFERRED"),
 });
 
+export const updateSubscriptionSchema = z.object({
+  priority: z.enum(["MUST", "PREFERRED", "NICE"]),
+});
+
 export const digestConfigSchema = z.object({
   name: z.string().min(1).max(100),
   targetLength: z.number().min(30).max(120),
@@ -29,6 +33,18 @@ export const digestConfigSchema = z.object({
   deliveryMethod: z.enum(["PRIVATE_RSS", "PUSH", "EMAIL", "IN_APP"]),
 });
 
+export const digestConfigUpdateSchema = digestConfigSchema.partial();
+
+export const clipFeedbackSchema = z.object({
+  clipId: z.string(),
+  feedbackType: z.enum(["thumbsUp", "thumbsDown"]).nullable(),
+});
+
 export const generateDigestSchema = z.object({
   configId: z.string(),
+});
+
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
 });

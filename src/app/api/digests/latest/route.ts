@@ -3,20 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/api/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
-
   try {
-    const digest = await prisma.digest.findUnique({
-      where: { id },
+    const digest = await prisma.digest.findFirst({
+      where: { userId: session.user.id, status: "COMPLETED" },
+      orderBy: { createdAt: "desc" },
       include: {
         clips: {
           orderBy: { position: "asc" },
@@ -51,18 +47,18 @@ export async function GET(
       },
     });
 
-    if (!digest || digest.userId !== session.user.id) {
+    if (!digest) {
       return NextResponse.json(
-        { error: "Digest not found" },
+        { error: "No completed digests found" },
         { status: 404 },
       );
     }
 
     return NextResponse.json({ digest });
   } catch (error) {
-    console.error("Failed to get digest:", error);
+    console.error("Failed to get latest digest:", error);
     return NextResponse.json(
-      { error: "Failed to get digest" },
+      { error: "Failed to get latest digest" },
       { status: 500 },
     );
   }
