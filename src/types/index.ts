@@ -139,3 +139,73 @@ export const DELIVERY_METHODS = {
   EMAIL: { label: "Email", description: "Link in your inbox" },
   IN_APP: { label: "In-App", description: "Listen on PodDigest" },
 };
+
+// ─── Pipeline Types ────────────────────────────────────────────
+
+export interface ClipCandidate {
+  episodeId: string;
+  episodeTitle: string;
+  podcastTitle: string;
+  startTime: number;
+  endTime: number;
+  score: number;
+  scoreDimensions: ScoreDimensions;
+  summary: string;
+  speakers: string[];
+  text: string;
+}
+
+export interface NarrationScript {
+  type: "intro" | "transition" | "outro";
+  text: string;
+  position: number;
+}
+
+export interface NarrationAudio {
+  type: "intro" | "transition" | "outro";
+  s3Key: string;
+  duration: number;
+  position: number;
+}
+
+export interface DownloadProgress {
+  episodeId: string;
+  bytesDownloaded: number;
+  totalBytes: number | null;
+  percentage: number | null;
+}
+
+// ─── Pipeline Job Data Types ───────────────────────────────────
+
+export interface PipelineJobData {
+  digestId: string;
+  userId: string;
+  configId: string;
+}
+
+export interface CrawlJobResult {
+  digestId: string;
+  episodeIds: string[];
+}
+
+export interface TranscribeJobResult {
+  digestId: string;
+  episodeIds: string[];
+}
+
+export interface AnalyzeJobResult {
+  digestId: string;
+  clipIds: string[];
+}
+
+export interface NarrateJobResult {
+  digestId: string;
+  narrationAudios: NarrationAudio[];
+}
+
+export interface AssembleJobResult {
+  digestId: string;
+  audioS3Key: string;
+  totalDuration: number;
+  chapters: Chapter[];
+}
