@@ -59,16 +59,45 @@ export function PodcastSearch() {
     };
   }, [query, searchPodcasts]);
 
-  const toggleSubscribe = (trackId: number) => {
-    setSubscribedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(trackId)) {
-        next.delete(trackId);
-      } else {
-        next.add(trackId);
-      }
-      return next;
-    });
+  const [subscribing, setSubscribing] = useState<Set<number>>(new Set());
+
+  const toggleSubscribe = async (podcast: PodcastSearchResult) => {
+    if (subscribedIds.has(podcast.trackId)) {
+      // Already subscribed — toggle off locally (unsubscribe would need separate API)
+      setSubscribedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(podcast.trackId);
+        return next;
+      });
+      return;
+    }
+
+    setSubscribing((prev) => new Set(prev).add(podcast.trackId));
+    try {
+      const res = await fetch("/api/podcasts/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedUrl: podcast.feedUrl,
+          itunesId: String(podcast.trackId),
+          title: podcast.trackName,
+          author: podcast.artistName,
+          artworkUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
+          category: podcast.primaryGenreName,
+          priority: "PREFERRED",
+        }),
+      });
+      if (!res.ok) throw new Error("Subscribe failed");
+      setSubscribedIds((prev) => new Set(prev).add(podcast.trackId));
+    } catch {
+      // Subscription failed — don't update state
+    } finally {
+      setSubscribing((prev) => {
+        const next = new Set(prev);
+        next.delete(podcast.trackId);
+        return next;
+      });
+    }
   };
 
   return (
@@ -105,7 +134,8 @@ export function PodcastSearch() {
               key={podcast.trackId}
               podcast={podcast}
               isSubscribed={subscribedIds.has(podcast.trackId)}
-              onToggleSubscribe={() => toggleSubscribe(podcast.trackId)}
+              isSubscribing={subscribing.has(podcast.trackId)}
+              onToggleSubscribe={() => toggleSubscribe(podcast)}
             />
           ))}
         </div>
@@ -143,10 +173,12 @@ export function PodcastSearch() {
 function SearchResultCard({
   podcast,
   isSubscribed,
+  isSubscribing,
   onToggleSubscribe,
 }: {
   podcast: PodcastSearchResult;
   isSubscribed: boolean;
+  isSubscribing: boolean;
   onToggleSubscribe: () => void;
 }) {
   return (
@@ -192,8 +224,14 @@ function SearchResultCard({
           variant={isSubscribed ? "secondary" : "gradient"}
           className={cn("w-full", isSubscribed && "text-primary")}
           onClick={onToggleSubscribe}
+          disabled={isSubscribing}
         >
-          {isSubscribed ? (
+          {isSubscribing ? (
+            <>
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              Subscribing...
+            </>
+          ) : isSubscribed ? (
             <>
               <Check className="mr-1.5 h-3.5 w-3.5" />
               Subscribed

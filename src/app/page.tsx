@@ -70,7 +70,12 @@ export default function LandingPage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
-          <Button variant="outline" size="lg" className="text-base">
+          <Button
+            variant="outline"
+            size="lg"
+            className="text-base"
+            onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
+          >
             See how it works
           </Button>
         </div>
@@ -93,7 +98,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="mx-auto max-w-5xl px-6 py-20">
+      <section id="features" className="mx-auto max-w-5xl px-6 py-20">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           {features.map((feature) => (
             <div

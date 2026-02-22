@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { Library, Headphones } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -117,12 +116,10 @@ function PodcastCard({ podcast }: { podcast: SubscribedPodcast }) {
   const priorityConfig = PRIORITY_CONFIG[podcast.priority];
 
   return (
-    <Link href={`/dashboard/library/${podcast.id}`}>
       <Card
         className={cn(
           "group relative overflow-hidden border-border bg-card p-4 transition-all duration-300",
           "hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5",
-          "cursor-pointer"
         )}
       >
         {/* Subtle glow effect on hover */}
@@ -175,7 +172,6 @@ function PodcastCard({ podcast }: { podcast: SubscribedPodcast }) {
           </Badge>
         </div>
       </Card>
-    </Link>
   );
 }
 

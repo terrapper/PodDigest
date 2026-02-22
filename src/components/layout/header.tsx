@@ -1,6 +1,8 @@
 "use client";
 
-import { Bell, Search, User } from "lucide-react";
+import { Bell, Search, User, LogOut, Settings, UserCircle } from "lucide-react";
+import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +15,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function Header() {
+  const router = useRouter();
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
       {/* Search */}
@@ -21,6 +25,14 @@ export function Header() {
         <Input
           placeholder="Search podcasts, digests..."
           className="pl-9 bg-background"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const value = (e.target as HTMLInputElement).value.trim();
+              if (value) {
+                router.push(`/dashboard/library?tab=discover&q=${encodeURIComponent(value)}`);
+              }
+            }
+          }}
         />
       </div>
 
@@ -42,10 +54,19 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/dashboard/configure")}>
+              <UserCircle className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/dashboard/configure")}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Sign out</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

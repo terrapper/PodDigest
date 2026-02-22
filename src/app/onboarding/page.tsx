@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Headphones, Search, Settings, ArrowRight, Check } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Headphones, Search, Settings, ArrowRight, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import type { PodcastSearchResult } from "@/types";
 
 const steps = [
   { id: 1, title: "Find Podcasts", icon: Search },
@@ -14,19 +15,51 @@ const steps = [
 ];
 
 const suggestedPodcasts = [
-  { name: "Lex Fridman Podcast", genre: "Technology", selected: false },
-  { name: "Huberman Lab", genre: "Science", selected: false },
-  { name: "All-In Podcast", genre: "Business", selected: false },
-  { name: "How I Built This", genre: "Entrepreneurship", selected: false },
-  { name: "Radiolab", genre: "Science", selected: false },
-  { name: "The Tim Ferriss Show", genre: "Lifestyle", selected: false },
-  { name: "My First Million", genre: "Business", selected: false },
-  { name: "Acquired", genre: "Technology", selected: false },
+  { name: "Lex Fridman Podcast", genre: "Technology" },
+  { name: "Huberman Lab", genre: "Science" },
+  { name: "All-In Podcast", genre: "Business" },
+  { name: "How I Built This", genre: "Entrepreneurship" },
+  { name: "Radiolab", genre: "Science" },
+  { name: "The Tim Ferriss Show", genre: "Lifestyle" },
+  { name: "My First Million", genre: "Business" },
+  { name: "Acquired", genre: "Technology" },
 ];
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set());
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PodcastSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const searchPodcasts = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/podcasts/search?q=${encodeURIComponent(query.trim())}`);
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
+      setSearchResults(data.results ?? []);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => searchPodcasts(searchQuery), 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, searchPodcasts]);
 
   const togglePodcast = (name: string) => {
     setSelectedPodcasts((prev) => {
@@ -105,51 +138,123 @@ export default function OnboardingPage() {
                 </p>
               </div>
 
-              <Input
-                placeholder="Search for podcasts..."
-                className="bg-background"
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                {suggestedPodcasts.map((podcast) => (
-                  <button
-                    key={podcast.name}
-                    onClick={() => togglePodcast(podcast.name)}
-                    className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                      selectedPodcasts.has(podcast.name)
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-muted-foreground/30"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                        selectedPodcasts.has(podcast.name)
-                          ? "gradient-primary"
-                          : "bg-muted"
-                      }`}
-                    >
-                      <Headphones
-                        className={`h-5 w-5 ${
-                          selectedPodcasts.has(podcast.name)
-                            ? "text-white"
-                            : "text-muted-foreground"
-                        }`}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {podcast.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {podcast.genre}
-                      </p>
-                    </div>
-                    {selectedPodcasts.has(podcast.name) && (
-                      <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
-                    )}
-                  </button>
-                ))}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search for podcasts..."
+                  className="bg-background pl-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {isSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
               </div>
+
+              {/* Search results */}
+              {searchQuery.trim() && searchResults.length > 0 && (
+                <div>
+                  <p className="mb-3 text-sm font-medium text-muted-foreground">
+                    Search Results
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {searchResults.slice(0, 8).map((podcast) => (
+                      <button
+                        key={podcast.trackId}
+                        onClick={() => togglePodcast(podcast.trackName)}
+                        className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                          selectedPodcasts.has(podcast.trackName)
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-muted-foreground/30"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                            selectedPodcasts.has(podcast.trackName)
+                              ? "gradient-primary"
+                              : "bg-muted"
+                          }`}
+                        >
+                          <Headphones
+                            className={`h-5 w-5 ${
+                              selectedPodcasts.has(podcast.trackName)
+                                ? "text-white"
+                                : "text-muted-foreground"
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {podcast.trackName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {podcast.artistName}
+                          </p>
+                        </div>
+                        {selectedPodcasts.has(podcast.trackName) && (
+                          <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No results */}
+              {searchQuery.trim() && !isSearching && searchResults.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  No podcasts found. Try a different search term.
+                </p>
+              )}
+
+              {/* Suggested podcasts (show when not searching) */}
+              {!searchQuery.trim() && (
+                <div>
+                  <p className="mb-3 text-sm font-medium text-muted-foreground">
+                    Popular Podcasts
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {suggestedPodcasts.map((podcast) => (
+                      <button
+                        key={podcast.name}
+                        onClick={() => togglePodcast(podcast.name)}
+                        className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                          selectedPodcasts.has(podcast.name)
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-muted-foreground/30"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                            selectedPodcasts.has(podcast.name)
+                              ? "gradient-primary"
+                              : "bg-muted"
+                          }`}
+                        >
+                          <Headphones
+                            className={`h-5 w-5 ${
+                              selectedPodcasts.has(podcast.name)
+                                ? "text-white"
+                                : "text-muted-foreground"
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {podcast.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {podcast.genre}
+                          </p>
+                        </div>
+                        {selectedPodcasts.has(podcast.name) && (
+                          <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
