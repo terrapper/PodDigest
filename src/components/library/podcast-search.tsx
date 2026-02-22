@@ -16,6 +16,7 @@ export function PodcastSearch() {
   const [results, setResults] = useState<PodcastSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [subscribedIds, setSubscribedIds] = useState<Set<number>>(new Set());
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -28,15 +29,22 @@ export function PodcastSearch() {
 
     setIsLoading(true);
     setHasSearched(true);
+    setSearchError(null);
 
     try {
       const response = await fetch(
         `/api/podcasts/search?q=${encodeURIComponent(searchQuery.trim())}`
       );
+      if (response.status === 401) {
+        setSearchError("Please sign in to search for podcasts.");
+        setResults([]);
+        return;
+      }
       if (!response.ok) throw new Error("Search failed");
       const data = await response.json();
       setResults(data.results ?? []);
     } catch {
+      setSearchError("Search failed. Please try again.");
       setResults([]);
     } finally {
       setIsLoading(false);
@@ -116,6 +124,13 @@ export function PodcastSearch() {
           <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
+
+      {/* Error message */}
+      {searchError && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <p className="text-sm text-destructive">{searchError}</p>
+        </div>
+      )}
 
       {/* Loading Skeletons */}
       {isLoading && results.length === 0 && (

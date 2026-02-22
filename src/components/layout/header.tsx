@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,7 @@ import {
 
 export function Header() {
   const router = useRouter();
+  const { toast } = useToast();
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
@@ -38,7 +40,12 @@ export function Header() {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          onClick={() => toast({ title: "No new notifications", description: "Notifications will appear here when your digests are ready." })}
+        >
           <Bell className="h-5 w-5" />
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
         </Button>
