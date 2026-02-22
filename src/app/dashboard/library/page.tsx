@@ -1,13 +1,55 @@
 "use client";
 
-import { Library, Search } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Library, Search, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { PodcastSearch } from "@/components/library/podcast-search";
-import { PodcastGrid, MOCK_PODCASTS } from "@/components/library/podcast-grid";
+import { PodcastGrid } from "@/components/library/podcast-grid";
+import type { Subscription } from "@/components/library/podcast-grid";
 
 export default function LibraryPage() {
-  const subscriptionCount = MOCK_PODCASTS.length;
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchSubscriptions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/podcasts/subscriptions");
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setSubscriptions(data.subscriptions ?? []);
+    } catch {
+      setSubscriptions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSubscriptions();
+  }, [fetchSubscriptions]);
+
+  const handleUnsubscribe = async (subscriptionId: string) => {
+    const res = await fetch(`/api/podcasts/subscriptions/${subscriptionId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setSubscriptions((prev) => prev.filter((s) => s.id !== subscriptionId));
+    }
+  };
+
+  const handlePriorityChange = async (subscriptionId: string, priority: "MUST" | "PREFERRED" | "NICE") => {
+    const res = await fetch(`/api/podcasts/subscriptions/${subscriptionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority }),
+    });
+    if (res.ok) {
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.id === subscriptionId ? { ...s, priority } : s)),
+      );
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -31,7 +73,7 @@ export default function LibraryPage() {
               variant="secondary"
               className="ml-1 h-5 min-w-[20px] justify-center rounded-full px-1.5 text-[10px] font-bold"
             >
-              {subscriptionCount}
+              {subscriptions.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="discover" className="gap-2">
@@ -41,11 +83,21 @@ export default function LibraryPage() {
         </TabsList>
 
         <TabsContent value="my-podcasts">
-          <PodcastGrid />
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <PodcastGrid
+              subscriptions={subscriptions}
+              onUnsubscribe={handleUnsubscribe}
+              onPriorityChange={handlePriorityChange}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="discover">
-          <PodcastSearch />
+          <PodcastSearch onSubscribed={fetchSubscriptions} />
         </TabsContent>
       </Tabs>
     </div>

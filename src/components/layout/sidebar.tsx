@@ -10,6 +10,7 @@ import {
   Headphones,
   ChevronLeft,
   ChevronRight,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/dashboard/library", icon: Library, label: "Library" },
   { href: "/dashboard/configure", icon: Settings, label: "Configure" },
   { href: "/dashboard/history", icon: History, label: "History" },
+  { href: "/dashboard/profile", icon: UserCircle, label: "Profile" },
 ];
 
 export function Sidebar() {

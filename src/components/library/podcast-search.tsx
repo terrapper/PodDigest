@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { PodcastSearchResult } from "@/types";
 
-export function PodcastSearch() {
+export function PodcastSearch({ onSubscribed }: { onSubscribed?: () => void } = {}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PodcastSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -97,6 +97,7 @@ export function PodcastSearch() {
       });
       if (!res.ok) throw new Error("Subscribe failed");
       setSubscribedIds((prev) => new Set(prev).add(podcast.trackId));
+      onSubscribed?.();
     } catch {
       // Subscription failed — don't update state
     } finally {

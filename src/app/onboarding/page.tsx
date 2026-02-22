@@ -27,7 +27,9 @@ const suggestedPodcasts = [
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set());
+  // Store full search result objects keyed by trackName for subscription
+  const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, PodcastSearchResult>>(new Map());
+  const [isSubscribing, setIsSubscribing] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,16 +63,48 @@ export default function OnboardingPage() {
     };
   }, [searchQuery, searchPodcasts]);
 
-  const togglePodcast = (name: string) => {
+  const toggleSearchResult = (podcast: PodcastSearchResult) => {
     setSelectedPodcasts((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
+      const next = new Map(prev);
+      if (next.has(podcast.trackName)) {
+        next.delete(podcast.trackName);
       } else {
-        next.add(name);
+        next.set(podcast.trackName, podcast);
       }
       return next;
     });
+  };
+
+  const handleSuggestedClick = (name: string) => {
+    setSearchQuery(name);
+  };
+
+  const handleContinueFromStep1 = async () => {
+    if (selectedPodcasts.size === 0) return;
+    setIsSubscribing(true);
+    try {
+      const promises = Array.from(selectedPodcasts.values()).map((podcast) =>
+        fetch("/api/podcasts/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            feedUrl: podcast.feedUrl,
+            itunesId: String(podcast.trackId),
+            title: podcast.trackName,
+            author: podcast.artistName,
+            artworkUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
+            category: podcast.primaryGenreName,
+            priority: "PREFERRED",
+          }),
+        }),
+      );
+      await Promise.allSettled(promises);
+    } catch {
+      // Continue anyway — partial success is fine
+    } finally {
+      setIsSubscribing(false);
+      setCurrentStep(2);
+    }
   };
 
   return (
@@ -161,7 +195,7 @@ export default function OnboardingPage() {
                     {searchResults.slice(0, 8).map((podcast) => (
                       <button
                         key={podcast.trackId}
-                        onClick={() => togglePodcast(podcast.trackName)}
+                        onClick={() => toggleSearchResult(podcast)}
                         className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                           selectedPodcasts.has(podcast.trackName)
                             ? "border-primary bg-primary/10"
@@ -207,53 +241,31 @@ export default function OnboardingPage() {
                 </p>
               )}
 
-              {/* Suggested podcasts (show when not searching) */}
+              {/* Suggested podcasts (show when not searching) — click to search */}
               {!searchQuery.trim() && (
                 <div>
                   <p className="mb-3 text-sm font-medium text-muted-foreground">
-                    Popular Podcasts
+                    Popular Podcasts — click to search
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-wrap gap-2">
                     {suggestedPodcasts.map((podcast) => (
                       <button
                         key={podcast.name}
-                        onClick={() => togglePodcast(podcast.name)}
-                        className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                          selectedPodcasts.has(podcast.name)
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-muted-foreground/30"
-                        }`}
+                        onClick={() => handleSuggestedClick(podcast.name)}
+                        className="rounded-full border border-border px-4 py-2 text-sm transition-all hover:border-primary/40 hover:bg-primary/5"
                       >
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                            selectedPodcasts.has(podcast.name)
-                              ? "gradient-primary"
-                              : "bg-muted"
-                          }`}
-                        >
-                          <Headphones
-                            className={`h-5 w-5 ${
-                              selectedPodcasts.has(podcast.name)
-                                ? "text-white"
-                                : "text-muted-foreground"
-                            }`}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {podcast.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {podcast.genre}
-                          </p>
-                        </div>
-                        {selectedPodcasts.has(podcast.name) && (
-                          <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
-                        )}
+                        {podcast.name}
                       </button>
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Selected count */}
+              {selectedPodcasts.size > 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  {selectedPodcasts.size} podcast{selectedPodcasts.size !== 1 ? "s" : ""} selected
+                </p>
               )}
             </div>
           )}
@@ -308,11 +320,28 @@ export default function OnboardingPage() {
             ) : (
               <div />
             )}
-            {currentStep < 3 ? (
+            {currentStep === 1 ? (
               <Button
                 variant="gradient"
-                onClick={() => setCurrentStep((s) => s + 1)}
-                disabled={currentStep === 1 && selectedPodcasts.size === 0}
+                onClick={handleContinueFromStep1}
+                disabled={selectedPodcasts.size === 0 || isSubscribing}
+              >
+                {isSubscribing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Subscribing...
+                  </>
+                ) : (
+                  <>
+                    Continue
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            ) : currentStep === 2 ? (
+              <Button
+                variant="gradient"
+                onClick={() => setCurrentStep(3)}
               >
                 Continue
                 <ArrowRight className="ml-2 h-4 w-4" />
