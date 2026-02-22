@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Clock,
   Scissors,
@@ -14,6 +14,8 @@ import {
   Timer,
   Send,
   Save,
+  Loader2,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -160,22 +162,66 @@ export function ConfigForm() {
   const [deliveryTime, setDeliveryTime] = useState("08:00");
   const [deliveryMethod, setDeliveryMethod] = useState("IN_APP");
 
-  const handleSave = () => {
-    const config = {
-      targetLength: Number(targetLength),
-      clipLength,
-      structure,
-      breadthDepth: breadthDepth[0],
-      voiceId,
-      narrationDepth,
-      musicStyle,
-      transitionStyle,
-      deliveryDay,
-      deliveryTime,
-      deliveryMethod,
-    };
-    // TODO: Save config via API
-    console.log("Saving config:", config);
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+
+  // Load existing config on mount
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const res = await fetch("/api/config");
+        if (!res.ok) return;
+        const { config } = await res.json();
+        if (!config) return;
+        if (config.targetLength) setTargetLength(String(config.targetLength));
+        if (config.clipLengthPref) setClipLength(config.clipLengthPref);
+        if (config.structure) setStructure(config.structure);
+        if (config.breadthDepth != null) setBreadthDepth([config.breadthDepth]);
+        if (config.voiceId) setVoiceId(config.voiceId);
+        if (config.narrationDepth) setNarrationDepth(config.narrationDepth);
+        if (config.musicStyle) setMusicStyle(config.musicStyle);
+        if (config.transitionStyle) setTransitionStyle(config.transitionStyle);
+        if (config.deliveryDay) setDeliveryDay(config.deliveryDay);
+        if (config.deliveryTime) setDeliveryTime(config.deliveryTime);
+        if (config.deliveryMethod) setDeliveryMethod(config.deliveryMethod);
+      } catch {
+        // Silently fail — use defaults
+      }
+    }
+    loadConfig();
+  }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveStatus("idle");
+    try {
+      const res = await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetLength: Number(targetLength),
+          clipLengthPref: clipLength,
+          structure,
+          breadthDepth: breadthDepth[0],
+          voiceId,
+          narrationDepth,
+          musicStyle,
+          transitionStyle,
+          deliveryDay,
+          deliveryTime,
+          deliveryMethod,
+        }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -431,15 +477,31 @@ export function ConfigForm() {
       </Card>
 
       {/* ─── Save Button ──────────────────────────────────── */}
-      <div className="flex justify-end pb-8">
+      <div className="flex items-center justify-end gap-3 pb-8">
+        {saveStatus === "saved" && (
+          <span className="flex items-center gap-1.5 text-sm text-green-500">
+            <CheckCircle className="h-4 w-4" />
+            Saved
+          </span>
+        )}
+        {saveStatus === "error" && (
+          <span className="text-sm text-destructive">
+            Failed to save. Please try again.
+          </span>
+        )}
         <Button
           variant="gradient"
           size="lg"
           className="min-w-[200px]"
           onClick={handleSave}
+          disabled={isSaving}
         >
-          <Save className="mr-2 h-4 w-4" />
-          Save Configuration
+          {isSaving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-4 w-4" />
+          )}
+          {isSaving ? "Saving..." : "Save Configuration"}
         </Button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { Play, Clock, Headphones, Calendar, Download, MoreVertical } from "lucid
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +61,22 @@ const pastDigests = [
 ];
 
 export default function HistoryPage() {
+  const { toast } = useToast();
+
+  const handlePlay = (digest: (typeof pastDigests)[0]) => {
+    toast({
+      title: "No audio available",
+      description: `"${digest.title}" hasn't been generated yet. Subscribe to podcasts and generate your first digest.`,
+    });
+  };
+
+  const handleDownload = (digest: (typeof pastDigests)[0]) => {
+    toast({
+      title: "Download unavailable",
+      description: `"${digest.title}" hasn't been generated yet. Audio will be downloadable once your digest pipeline runs.`,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -76,10 +93,17 @@ export default function HistoryPage() {
           <Card
             key={digest.id}
             className="group cursor-pointer transition-all hover:border-primary/30"
+            onClick={() => handlePlay(digest)}
           >
             <CardContent className="flex items-center gap-4 p-4">
               {/* Play button */}
-              <button className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl gradient-primary opacity-90 transition-opacity group-hover:opacity-100">
+              <button
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl gradient-primary opacity-90 transition-opacity group-hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlay(digest);
+                }}
+              >
                 <Play className="h-5 w-5 text-white ml-0.5" />
               </button>
 
@@ -123,16 +147,21 @@ export default function HistoryPage() {
               {/* Actions */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handlePlay(digest)}>
                     <Play className="mr-2 h-4 w-4" />
                     Play
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownload(digest)}>
                     <Download className="mr-2 h-4 w-4" />
                     Download MP3
                   </DropdownMenuItem>

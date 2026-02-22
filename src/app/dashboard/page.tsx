@@ -154,57 +154,58 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {recentDigests.map((digest) => (
-            <Card
-              key={digest.id}
-              className="group cursor-pointer transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
-            >
-              <CardContent className="p-5">
-                {/* Gradient header */}
-                <div
-                  className={`mb-4 flex h-24 items-center justify-center rounded-lg bg-gradient-to-br ${digest.artworkColors[0]} ${digest.artworkColors[1]} opacity-80`}
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-transform group-hover:scale-110">
-                    <Play className="h-6 w-6 text-white ml-0.5" />
+            <Link key={digest.id} href="/dashboard/history">
+              <Card
+                className="group cursor-pointer transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+              >
+                <CardContent className="p-5">
+                  {/* Gradient header */}
+                  <div
+                    className={`mb-4 flex h-24 items-center justify-center rounded-lg bg-gradient-to-br ${digest.artworkColors[0]} ${digest.artworkColors[1]} opacity-80`}
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-transform group-hover:scale-110">
+                      <Play className="h-6 w-6 text-white ml-0.5" />
+                    </div>
                   </div>
-                </div>
 
-                <h3 className="font-semibold line-clamp-1">{digest.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {digest.date}
-                </p>
+                  <h3 className="font-semibold line-clamp-1">{digest.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {digest.date}
+                  </p>
 
-                <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {digest.duration}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Headphones className="h-3 w-3" />
-                    {digest.clipCount} clips
-                  </span>
-                </div>
+                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {digest.duration}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Headphones className="h-3 w-3" />
+                      {digest.clipCount} clips
+                    </span>
+                  </div>
 
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {digest.podcasts.slice(0, 2).map((name) => (
-                    <Badge
-                      key={name}
-                      variant="secondary"
-                      className="text-xs font-normal"
-                    >
-                      {name}
-                    </Badge>
-                  ))}
-                  {digest.podcasts.length > 2 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs font-normal"
-                    >
-                      +{digest.podcasts.length - 2}
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {digest.podcasts.slice(0, 2).map((name) => (
+                      <Badge
+                        key={name}
+                        variant="secondary"
+                        className="text-xs font-normal"
+                      >
+                        {name}
+                      </Badge>
+                    ))}
+                    {digest.podcasts.length > 2 && (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs font-normal"
+                      >
+                        +{digest.podcasts.length - 2}
+                      </Badge>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       </div>
