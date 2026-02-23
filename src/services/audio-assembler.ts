@@ -6,22 +6,12 @@ import { join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import {
-  S3Client,
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { s3, STORAGE_BUCKET } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { NarrationAudio, Chapter } from "@/types";
-
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.AWS_S3_BUCKET!;
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -66,7 +56,7 @@ export async function downloadFromS3ToTemp(
 ): Promise<void> {
   const response = await s3.send(
     new GetObjectCommand({
-      Bucket: BUCKET,
+      Bucket: STORAGE_BUCKET,
       Key: s3Key,
     })
   );
@@ -622,7 +612,7 @@ export async function assembleDigest(
 
     await s3.send(
       new PutObjectCommand({
-        Bucket: BUCKET,
+        Bucket: STORAGE_BUCKET,
         Key: s3Key,
         Body: fileBuffer,
         ContentType: "audio/mpeg",

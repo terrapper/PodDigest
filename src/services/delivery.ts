@@ -1,19 +1,9 @@
 // Delivery Engine Service
 // Uploads to S3/CDN, updates private RSS feed, triggers notifications
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { s3, STORAGE_BUCKET, getPublicUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
-
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.AWS_S3_BUCKET!;
-const REGION = process.env.AWS_REGION || "us-east-1";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -66,15 +56,10 @@ function escapeXml(text: string): string {
 // ─── S3 URL Helpers ───────────────────────────────────────────
 
 /**
- * Returns the S3 URL for a user's private RSS feed.
+ * Returns the public URL for a user's private RSS feed.
  */
 export function getRssFeedUrl(userId: string): string {
-  const cdnDomain = process.env.CDN_DOMAIN;
-  const key = `feeds/${userId}/feed.xml`;
-  if (cdnDomain) {
-    return `https://${cdnDomain}/${key}`;
-  }
-  return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+  return getPublicUrl(`feeds/${userId}/feed.xml`);
 }
 
 // ─── RSS Feed Generation ──────────────────────────────────────
@@ -173,7 +158,7 @@ export async function generatePrivateRssFeed(userId: string): Promise<string> {
 
   await s3.send(
     new PutObjectCommand({
-      Bucket: BUCKET,
+      Bucket: STORAGE_BUCKET,
       Key: s3Key,
       Body: xml,
       ContentType: "application/rss+xml; charset=utf-8",

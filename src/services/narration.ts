@@ -1,19 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { s3, STORAGE_BUCKET } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { NarrationScript, NarrationAudio } from "@/types";
 
 const anthropic = new Anthropic();
-
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.AWS_S3_BUCKET!;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
@@ -220,7 +211,7 @@ export async function synthesizeNarration(
 
     await s3.send(
       new PutObjectCommand({
-        Bucket: BUCKET,
+        Bucket: STORAGE_BUCKET,
         Key: s3Key,
         Body: audioBuffer,
         ContentType: "audio/mpeg",

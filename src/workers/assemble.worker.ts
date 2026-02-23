@@ -1,5 +1,6 @@
 import { assembleQueue, deliverQueue } from "@/lib/queue";
 import { assembleDigest } from "@/services/audio-assembler";
+import { getPublicUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { NarrateJobResult, AssembleJobResult } from "@/types";
 
@@ -23,7 +24,7 @@ assembleQueue.process(async (job) => {
     );
 
     // Update digest with audio information
-    const audioUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || "us-east-1"}.amazonaws.com/${s3Key}`;
+    const audioUrl = getPublicUrl(s3Key);
     await prisma.digest.update({
       where: { id: digestId },
       data: {

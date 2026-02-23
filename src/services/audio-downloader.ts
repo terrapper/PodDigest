@@ -3,24 +3,14 @@
 // Streams from source URL, uploads to S3, with progress tracking
 
 import {
-  S3Client,
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
+import { s3, STORAGE_BUCKET, getPublicUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { DownloadProgress } from "@/types";
-
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.AWS_S3_BUCKET!;
 
 function episodeS3Key(episodeId: string): string {
   return `episodes/${episodeId}/audio.mp3`;
@@ -33,7 +23,7 @@ async function isAudioDownloaded(episodeId: string): Promise<boolean> {
   try {
     await s3.send(
       new HeadObjectCommand({
-        Bucket: BUCKET,
+        Bucket: STORAGE_BUCKET,
         Key: episodeS3Key(episodeId),
       })
     );
@@ -65,7 +55,7 @@ export async function downloadEpisodeAudio(
   if (await isAudioDownloaded(episodeId)) {
     const head = await s3.send(
       new HeadObjectCommand({
-        Bucket: BUCKET,
+        Bucket: STORAGE_BUCKET,
         Key: s3Key,
       })
     );
@@ -124,7 +114,7 @@ export async function downloadEpisodeAudio(
   // Upload the complete audio buffer to S3
   await s3.send(
     new PutObjectCommand({
-      Bucket: BUCKET,
+      Bucket: STORAGE_BUCKET,
       Key: s3Key,
       Body: body,
       ContentType: "audio/mpeg",
@@ -148,7 +138,7 @@ export async function downloadEpisodeAudio(
 export async function getS3AudioStream(s3Key: string): Promise<ReadableStream> {
   const response = await s3.send(
     new GetObjectCommand({
-      Bucket: BUCKET,
+      Bucket: STORAGE_BUCKET,
       Key: s3Key,
     })
   );
@@ -205,19 +195,12 @@ export async function getS3AudioStream(s3Key: string): Promise<ReadableStream> {
 }
 
 /**
- * Get the public S3 URL for an audio file.
+ * Get the public URL for an audio file in storage.
  *
- * If a CDN_DOMAIN environment variable is set (e.g., CloudFront), the URL
- * will use that domain. Otherwise, falls back to the direct S3 bucket URL.
+ * Re-exports getPublicUrl from the shared storage module for backwards
+ * compatibility with existing callers.
  */
-export function getSignedAudioUrl(s3Key: string): string {
-  const cdnDomain = process.env.CDN_DOMAIN;
-  if (cdnDomain) {
-    return `https://${cdnDomain}/${s3Key}`;
-  }
-  const region = process.env.AWS_REGION || "us-east-1";
-  return `https://${BUCKET}.s3.${region}.amazonaws.com/${s3Key}`;
-}
+export { getPublicUrl as getSignedAudioUrl } from "@/lib/storage";
 
 /**
  * Delete an object from S3.
@@ -227,7 +210,7 @@ export function getSignedAudioUrl(s3Key: string): string {
 export async function deleteS3Object(s3Key: string): Promise<void> {
   await s3.send(
     new DeleteObjectCommand({
-      Bucket: BUCKET,
+      Bucket: STORAGE_BUCKET,
       Key: s3Key,
     })
   );

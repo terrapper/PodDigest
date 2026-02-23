@@ -1,3 +1,4 @@
+import { getPublicUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { TranscriptSegment } from "@/types";
 
@@ -45,12 +46,6 @@ interface DeepgramResponse {
 // ─── Environment ──────────────────────────────────────────────
 
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
-const AWS_REGION = process.env.AWS_REGION ?? "us-east-1";
-
-function getSignedAudioUrl(s3Key: string): string {
-  return `https://${AWS_S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${s3Key}`;
-}
 
 // ─── Main Transcription Function ──────────────────────────────
 
@@ -62,10 +57,6 @@ export async function transcribeEpisode(
     throw new Error("DEEPGRAM_API_KEY environment variable is not set");
   }
 
-  if (!AWS_S3_BUCKET) {
-    throw new Error("AWS_S3_BUCKET environment variable is not set");
-  }
-
   // Set episode status to PROCESSING
   await prisma.episode.update({
     where: { id: episodeId },
@@ -73,7 +64,7 @@ export async function transcribeEpisode(
   });
 
   try {
-    const audioUrl = getSignedAudioUrl(s3Key);
+    const audioUrl = getPublicUrl(s3Key);
 
     // Call Deepgram pre-recorded API
     const queryParams = new URLSearchParams({
