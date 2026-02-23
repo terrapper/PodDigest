@@ -1,10 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic } from "@/lib/anthropic";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3, STORAGE_BUCKET } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { NarrationScript, NarrationAudio } from "@/types";
 
-const anthropic = new Anthropic();
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
@@ -124,16 +123,14 @@ export async function generateNarrationScripts(
   ].join("\n");
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  const responseText = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
+  const responseText =
+    response.content[0].type === "text" ? response.content[0].text : "";
 
   const scriptTexts = responseText
     .split("---SCRIPT---")

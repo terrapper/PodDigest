@@ -1,18 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic } from "@/lib/anthropic";
 import { prisma } from "@/lib/prisma";
 import type { ScoreDimensions, ClipCandidate, TranscriptSegment } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────
-
-interface AnalysisWindow {
-  episodeId: string;
-  episodeTitle: string;
-  podcastTitle: string;
-  startTime: number;
-  endTime: number;
-  text: string;
-  speakers: string[];
-}
 
 interface AnalysisConfig {
   narrationDepth: string;
@@ -28,11 +18,7 @@ interface SelectionConfig {
 
 // ─── Constants ────────────────────────────────────────────────
 
-const WINDOW_DURATION_SECONDS = 180; // ~3 minutes
-const WINDOW_STEP_SECONDS = 90; // 1.5 minute overlap
 const MIN_SCORE_THRESHOLD = 40;
-const API_DELAY_MS = 200;
-const PARALLEL_BATCH_SIZE = 5;
 const NARRATION_RATIO = 0.15; // 15% of digest is narration
 
 const CLIP_LENGTH_RANGES: Record<string, { min: number; max: number }> = {
@@ -50,10 +36,6 @@ const DIMENSION_WEIGHTS: Record<keyof ScoreDimensions, number> = {
   conversationalQuality: 0.15,
 };
 
-// ─── Claude API Client ───────────────────────────────────────
-
-const anthropic = new Anthropic();
-
 // ─── Scoring ──────────────────────────────────────────────────
 
 export function computeWeightedScore(dimensions: ScoreDimensions): number {
@@ -66,187 +48,165 @@ export function computeWeightedScore(dimensions: ScoreDimensions): number {
   );
 }
 
-// ─── Segment Window Scoring ──────────────────────────────────
-
-const SYSTEM_PROMPT = `You are an expert podcast analyst. Your job is to evaluate transcript segments from podcast episodes and score them across five quality dimensions. You assess how compelling, insightful, and valuable each segment would be for a listener who wants the best highlights from their podcast subscriptions.
-
-Score each dimension from 0 to 100:
-- insightDensity: Novel information, unique perspectives, surprising data points, expert knowledge
-- emotionalIntensity: Compelling storytelling, humor, vulnerability, passion, memorable moments
-- actionability: Practical takeaways, concrete advice, steps the listener can apply
-- topicalRelevance: General interest and broad appeal of the topic being discussed
-- conversationalQuality: Great dialogue flow, chemistry between speakers, memorable exchanges
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "insightDensity": <number 0-100>,
-  "emotionalIntensity": <number 0-100>,
-  "actionability": <number 0-100>,
-  "topicalRelevance": <number 0-100>,
-  "conversationalQuality": <number 0-100>,
-  "summary": "<one sentence describing what makes this segment compelling or why it scores low>",
-  "speakers": ["<speaker names identified in the segment>"]
-}
-
-Do not include any text outside the JSON object.`;
-
-function buildUserPrompt(
-  window: AnalysisWindow,
-  config: AnalysisConfig
-): string {
-  const preferencesNote = config.userPreferences
-    ? `\n\nUser preferences context: ${JSON.stringify(config.userPreferences)}`
-    : "";
-
-  return `Analyze this podcast transcript segment and score it.
-
-Podcast: "${window.podcastTitle}"
-Episode: "${window.episodeTitle}"
-Timestamp: ${formatTimestamp(window.startTime)} - ${formatTimestamp(window.endTime)}
-Speakers in segment: ${window.speakers.length > 0 ? window.speakers.join(", ") : "Unknown"}
-${preferencesNote}
-
---- TRANSCRIPT ---
-${window.text}
---- END TRANSCRIPT ---`;
-}
-
-function formatTimestamp(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-export async function scoreSegmentWindow(
-  window: AnalysisWindow,
-  config: AnalysisConfig
-): Promise<ClipCandidate | null> {
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: buildUserPrompt(window, config),
-        },
-      ],
-    });
-
-    const textBlock = response.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return null;
-    }
-
-    const parsed = JSON.parse(textBlock.text);
-
-    const dimensions: ScoreDimensions = {
-      insightDensity: clampScore(parsed.insightDensity),
-      emotionalIntensity: clampScore(parsed.emotionalIntensity),
-      actionability: clampScore(parsed.actionability),
-      topicalRelevance: clampScore(parsed.topicalRelevance),
-      conversationalQuality: clampScore(parsed.conversationalQuality),
-    };
-
-    const score = computeWeightedScore(dimensions);
-
-    if (score < MIN_SCORE_THRESHOLD) {
-      return null;
-    }
-
-    return {
-      episodeId: window.episodeId,
-      episodeTitle: window.episodeTitle,
-      podcastTitle: window.podcastTitle,
-      startTime: window.startTime,
-      endTime: window.endTime,
-      score,
-      scoreDimensions: dimensions,
-      summary: parsed.summary ?? "",
-      speakers: parsed.speakers ?? window.speakers,
-      text: window.text,
-    };
-  } catch (error) {
-    console.error(
-      `Failed to score window [${window.episodeTitle} ${formatTimestamp(window.startTime)}-${formatTimestamp(window.endTime)}]:`,
-      error
-    );
-    return null;
-  }
-}
-
 function clampScore(value: unknown): number {
   const num = typeof value === "number" ? value : Number(value);
   if (isNaN(num)) return 0;
   return Math.max(0, Math.min(100, Math.round(num)));
 }
 
-// ─── Sliding Window Construction ─────────────────────────────
+// ─── Transcript Formatting ──────────────────────────────────
 
-function buildAnalysisWindows(
+function formatTimestamp(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatTranscriptCompact(segments: TranscriptSegment[]): string {
+  return segments
+    .map((seg) => {
+      const ts = formatTimestamp(seg.start);
+      const speaker = seg.speaker ? ` [${seg.speaker}]:` : ":";
+      return `[${ts}]${speaker} ${seg.text}`;
+    })
+    .join("\n");
+}
+
+// ─── Single-Call Episode Analysis ───────────────────────────
+
+const ANALYSIS_SYSTEM_PROMPT = `You are an expert podcast analyst. Given a full episode transcript with timestamps, identify the 10-15 most compelling segments that would make great highlights for a weekly podcast digest.
+
+Score each segment across 5 dimensions (0-100):
+- insightDensity: Novel information, unique perspectives, surprising data points, expert knowledge
+- emotionalIntensity: Compelling storytelling, humor, vulnerability, passion, memorable moments
+- actionability: Practical takeaways, concrete advice, steps the listener can apply
+- topicalRelevance: General interest and broad appeal of the topic being discussed
+- conversationalQuality: Great dialogue flow, chemistry between speakers, memorable exchanges
+
+Each segment should be 2-15 minutes long (120-900 seconds). Prefer segments that form complete, self-contained thoughts or discussions.
+
+Respond ONLY with a valid JSON array of segment objects. No text outside the JSON array.
+Each object must have exactly these fields:
+{
+  "startTime": <number, seconds from episode start>,
+  "endTime": <number, seconds from episode start>,
+  "insightDensity": <number 0-100>,
+  "emotionalIntensity": <number 0-100>,
+  "actionability": <number 0-100>,
+  "topicalRelevance": <number 0-100>,
+  "conversationalQuality": <number 0-100>,
+  "summary": "<one sentence describing what makes this segment compelling>",
+  "speakers": ["<speaker names or identifiers>"]
+}`;
+
+interface RawSegmentResponse {
+  startTime: number;
+  endTime: number;
+  insightDensity: number;
+  emotionalIntensity: number;
+  actionability: number;
+  topicalRelevance: number;
+  conversationalQuality: number;
+  summary: string;
+  speakers: string[];
+}
+
+async function analyzeEpisodeTranscript(
   episodeId: string,
   episodeTitle: string,
   podcastTitle: string,
-  segments: TranscriptSegment[]
-): AnalysisWindow[] {
-  if (segments.length === 0) return [];
+  segments: TranscriptSegment[],
+  config: AnalysisConfig
+): Promise<ClipCandidate[]> {
+  const transcript = formatTranscriptCompact(segments);
 
-  const windows: AnalysisWindow[] = [];
-  const totalDuration = segments[segments.length - 1].end;
+  const preferencesNote = config.userPreferences
+    ? `\n\nUser preferences: ${JSON.stringify(config.userPreferences)}`
+    : "";
 
-  let windowStart = segments[0].start;
+  const userPrompt = `Analyze this podcast episode and identify the best segments for a digest.
 
-  while (windowStart < totalDuration) {
-    const windowEnd = windowStart + WINDOW_DURATION_SECONDS;
+Podcast: "${podcastTitle}"
+Episode: "${episodeTitle}"
+Total segments: ${segments.length}
+Episode duration: ~${formatTimestamp(segments[segments.length - 1].end)}${preferencesNote}
 
-    const windowSegments = segments.filter(
-      (seg) => seg.end > windowStart && seg.start < windowEnd
-    );
+--- TRANSCRIPT ---
+${transcript}
+--- END TRANSCRIPT ---`;
 
-    if (windowSegments.length === 0) {
-      windowStart += WINDOW_STEP_SECONDS;
-      continue;
-    }
-
-    const actualStart = Math.max(windowStart, windowSegments[0].start);
-    const actualEnd = Math.min(
-      windowEnd,
-      windowSegments[windowSegments.length - 1].end
-    );
-
-    const text = windowSegments
-      .map((seg) => {
-        const prefix = seg.speaker ? `[${seg.speaker}]: ` : "";
-        return `${prefix}${seg.text}`;
-      })
-      .join("\n");
-
-    const speakerSet = new Set(
-      windowSegments
-        .map((seg) => seg.speaker)
-        .filter((s): s is string => !!s)
-    );
-    const speakers = Array.from(speakerSet);
-
-    windows.push({
-      episodeId,
-      episodeTitle,
-      podcastTitle,
-      startTime: actualStart,
-      endTime: actualEnd,
-      text,
-      speakers,
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 4096,
+      system: ANALYSIS_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
     });
 
-    windowStart += WINDOW_STEP_SECONDS;
-  }
+    const text =
+      response.content[0].type === "text" ? response.content[0].text : "";
 
-  return windows;
+    if (!text) {
+      console.error(`Empty response for episode "${episodeTitle}"`);
+      return [];
+    }
+
+    // Extract JSON array — handle possible markdown code fences
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error(
+        `No JSON array found in response for episode "${episodeTitle}"`
+      );
+      return [];
+    }
+
+    const parsed: RawSegmentResponse[] = JSON.parse(jsonMatch[0]);
+
+    const candidates: ClipCandidate[] = [];
+
+    for (const seg of parsed) {
+      const dimensions: ScoreDimensions = {
+        insightDensity: clampScore(seg.insightDensity),
+        emotionalIntensity: clampScore(seg.emotionalIntensity),
+        actionability: clampScore(seg.actionability),
+        topicalRelevance: clampScore(seg.topicalRelevance),
+        conversationalQuality: clampScore(seg.conversationalQuality),
+      };
+
+      const score = computeWeightedScore(dimensions);
+
+      if (score < MIN_SCORE_THRESHOLD) {
+        continue;
+      }
+
+      // Reconstruct the text for this segment from the original transcript segments
+      const clipSegments = segments.filter(
+        (s) => s.end > seg.startTime && s.start < seg.endTime
+      );
+      const clipText = clipSegments.map((s) => s.text).join(" ");
+
+      candidates.push({
+        episodeId,
+        episodeTitle,
+        podcastTitle,
+        startTime: seg.startTime,
+        endTime: seg.endTime,
+        score,
+        scoreDimensions: dimensions,
+        summary: seg.summary ?? "",
+        speakers: seg.speakers ?? [],
+        text: clipText,
+      });
+    }
+
+    return candidates;
+  } catch (error) {
+    console.error(
+      `Failed to analyze episode "${episodeTitle}":`,
+      error
+    );
+    return [];
+  }
 }
 
 // ─── Clip Selection ──────────────────────────────────────────
@@ -366,42 +326,6 @@ function orderClipsByStructure(
   }
 }
 
-// ─── Batch Processing Helpers ────────────────────────────────
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function processWindowBatch(
-  windows: AnalysisWindow[],
-  config: AnalysisConfig
-): Promise<ClipCandidate[]> {
-  const results = await Promise.all(
-    windows.map((window) => scoreSegmentWindow(window, config))
-  );
-  return results.filter((r): r is ClipCandidate => r !== null);
-}
-
-async function processEpisodeWindows(
-  windows: AnalysisWindow[],
-  config: AnalysisConfig
-): Promise<ClipCandidate[]> {
-  const allCandidates: ClipCandidate[] = [];
-
-  for (let i = 0; i < windows.length; i += PARALLEL_BATCH_SIZE) {
-    const batch = windows.slice(i, i + PARALLEL_BATCH_SIZE);
-    const batchResults = await processWindowBatch(batch, config);
-    allCandidates.push(...batchResults);
-
-    // Rate limit: add delay between batches
-    if (i + PARALLEL_BATCH_SIZE < windows.length) {
-      await delay(API_DELAY_MS);
-    }
-  }
-
-  return allCandidates;
-}
-
 // ─── Main Entry Point ────────────────────────────────────────
 
 export async function analyzeTranscripts(
@@ -448,7 +372,7 @@ export async function analyzeTranscripts(
     );
   }
 
-  // Process each episode sequentially, windows within each episode in parallel batches
+  // Process each episode with a single Claude call
   const allCandidates: ClipCandidate[] = [];
 
   for (const episode of episodes) {
@@ -465,28 +389,19 @@ export async function analyzeTranscripts(
       continue;
     }
 
-    const windows = buildAnalysisWindows(
+    console.log(
+      `Analyzing episode "${episode.title}" — ${segments.length} transcript segments (single API call)`
+    );
+
+    const episodeCandidates = await analyzeEpisodeTranscript(
       episode.id,
       episode.title,
       episode.podcast.title,
-      segments
-    );
-
-    console.log(
-      `Analyzing episode "${episode.title}" — ${windows.length} windows`
-    );
-
-    const episodeCandidates = await processEpisodeWindows(
-      windows,
+      segments,
       analysisConfig
     );
 
     allCandidates.push(...episodeCandidates);
-
-    // Delay between episodes for rate limiting
-    if (episodes.indexOf(episode) < episodes.length - 1) {
-      await delay(API_DELAY_MS);
-    }
   }
 
   console.log(
