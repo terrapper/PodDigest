@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ["bull", "ioredis", "fluent-ffmpeg"],
   images: {
     remotePatterns: [
       {
