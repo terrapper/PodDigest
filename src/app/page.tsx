@@ -43,7 +43,7 @@ export default function LandingPage() {
           <Link href="/auth/signin">
             <Button variant="ghost">Sign in</Button>
           </Link>
-          <Link href="/auth/signin">
+          <Link href="/auth/signup">
             <Button variant="gradient">Get Started</Button>
           </Link>
         </div>
@@ -64,7 +64,7 @@ export default function LandingPage() {
           narrated weekly digest.
         </p>
         <div className="mt-10 flex items-center justify-center gap-4">
-          <Link href="/auth/signin">
+          <Link href="/auth/signup">
             <Button variant="gradient" size="lg" className="text-base px-8">
               Start Free
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -165,7 +165,7 @@ export default function LandingPage() {
             Subscribe to your favorite podcasts and let AI curate the best
             moments for you.
           </p>
-          <Link href="/auth/signin">
+          <Link href="/auth/signup">
             <Button
               size="lg"
               className="mt-8 bg-white text-gray-900 hover:bg-white/90 text-base px-8"
