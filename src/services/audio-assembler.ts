@@ -103,6 +103,30 @@ export async function downloadFromS3ToTemp(
   throw new Error(`Unexpected S3 body type for key: ${s3Key}`);
 }
 
+// ─── URL Download ────────────────────────────────────────────────
+
+export async function downloadFromUrlToTemp(
+  url: string,
+  localPath: string
+): Promise<void> {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download audio from URL (${response.status}): ${url}`
+    );
+  }
+
+  if (!response.body) {
+    throw new Error(`No body returned from URL: ${url}`);
+  }
+
+  const writeStream = createWriteStream(localPath);
+  // @ts-expect-error -- ReadableStream from fetch is compatible with Readable.fromWeb
+  const readable = Readable.fromWeb(response.body);
+  await pipeline(readable, writeStream);
+}
+
 // ─── Temp File Cleanup ──────────────────────────────────────────
 
 export async function cleanupTempFiles(dir: string): Promise<void> {
@@ -436,13 +460,12 @@ export async function assembleDigest(
 
     // ── Step 1: Download source episode audio files to temp ─────
 
-    // Collect unique episode IDs and their S3 keys
+    // Download source episode audio from original podcast URLs
     const episodeAudioPaths = new Map<string, string>();
     for (const clip of clips) {
       if (!episodeAudioPaths.has(clip.episodeId)) {
-        const episodeS3Key = `episodes/${clip.episodeId}/audio.mp3`;
         const localPath = join(tempDir, `episode-${clip.episodeId}.mp3`);
-        await downloadFromS3ToTemp(episodeS3Key, localPath);
+        await downloadFromUrlToTemp(clip.episode.audioUrl, localPath);
         episodeAudioPaths.set(clip.episodeId, localPath);
       }
     }

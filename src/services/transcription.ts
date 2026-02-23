@@ -1,4 +1,3 @@
-import { getPublicUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { TranscriptSegment } from "@/types";
 
@@ -51,7 +50,7 @@ const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 
 export async function transcribeEpisode(
   episodeId: string,
-  s3Key: string
+  audioUrl: string
 ): Promise<{ transcriptId: string; segmentCount: number }> {
   if (!DEEPGRAM_API_KEY) {
     throw new Error("DEEPGRAM_API_KEY environment variable is not set");
@@ -64,8 +63,6 @@ export async function transcribeEpisode(
   });
 
   try {
-    const audioUrl = getPublicUrl(s3Key);
-
     // Call Deepgram pre-recorded API
     const queryParams = new URLSearchParams({
       model: "nova-2",

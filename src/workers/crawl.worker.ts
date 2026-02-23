@@ -48,24 +48,15 @@ crawlQueue.process(async (job) => {
       throw new Error("No episodes found for digest — nothing to process");
     }
 
-    // Download audio for each new episode
-    job.progress(50);
-    console.log(`[crawl-worker] Downloading audio for ${episodeIds.length} episodes`);
-    for (let i = 0; i < episodeIds.length; i++) {
-      try {
-        await downloadEpisodeAudio(episodeIds[i]);
-        console.log(
-          `[crawl-worker] Downloaded ${i + 1}/${episodeIds.length}: ${episodeIds[i]}`
-        );
-      } catch (err) {
-        console.error(
-          `[crawl-worker] Failed to download episode ${episodeIds[i]}:`,
-          err
-        );
-        // Continue with remaining episodes
-      }
-      job.progress(50 + Math.round((50 * (i + 1)) / episodeIds.length));
-    }
+    // TODO: Audio download to S3 is disabled because Supabase Storage has a
+    // 50 MB upload limit and podcast episodes typically exceed that. The pipeline
+    // now streams audio directly from the original podcast URLs for transcription
+    // (Deepgram) and assembly (FFmpeg). Re-enable once we move to a storage
+    // backend without upload size constraints.
+    job.progress(100);
+    console.log(
+      `[crawl-worker] Skipping audio download — using original podcast URLs directly`
+    );
 
     const result: CrawlJobResult = { digestId, episodeIds };
 

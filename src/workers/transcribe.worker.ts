@@ -34,8 +34,11 @@ transcribeQueue.process(async (job) => {
       }
 
       try {
-        const s3Key = `episodes/${episodeId}/audio.mp3`;
-        const result = await transcribeEpisode(episodeId, s3Key);
+        const episode = await prisma.episode.findUniqueOrThrow({
+          where: { id: episodeId },
+          select: { audioUrl: true },
+        });
+        const result = await transcribeEpisode(episodeId, episode.audioUrl);
         console.log(
           `[transcribe-worker] Transcribed episode ${episodeId}: ${result.segmentCount} segments`
         );
