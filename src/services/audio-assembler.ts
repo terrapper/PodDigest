@@ -9,6 +9,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import NodeID3 from "node-id3";
 import { s3, STORAGE_BUCKET } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
 import type { NarrationAudio, Chapter } from "@/types";
@@ -171,12 +172,46 @@ export async function extractClip(
   await runFfmpeg(command);
 }
 
-// ─── Concatenation with Crossfades ──────────────────────────────
+// ─── Stinger Generation ─────────────────────────────────────────
+
+async function generateStinger(outputPath: string, duration: number = 0.3): Promise<void> {
+  const command = ffmpeg()
+    .input(`sine=frequency=800:duration=${duration}`)
+    .inputFormat("lavfi")
+    .audioFilters([
+      "afade=t=in:d=0.05",
+      `afade=t=out:st=${duration * 0.5}:d=${duration * 0.5}`,
+      "vibrato=f=8:d=0.3",
+    ])
+    .audioCodec("libmp3lame")
+    .audioBitrate("192k")
+    .audioFrequency(44100)
+    .audioChannels(2)
+    .output(outputPath);
+
+  await runFfmpeg(command);
+}
+
+async function generateSilencePad(outputPath: string, duration: number = 0.15): Promise<void> {
+  const command = ffmpeg()
+    .input("anullsrc=r=44100:cl=stereo")
+    .inputFormat("lavfi")
+    .duration(duration)
+    .audioCodec("libmp3lame")
+    .audioBitrate("192k")
+    .audioFrequency(44100)
+    .audioChannels(2)
+    .output(outputPath);
+
+  await runFfmpeg(command);
+}
+
+// ─── Concatenation with Stinger Transitions ─────────────────────
 
 export async function concatenateWithCrossfades(
   segments: AudioSegment[],
   outputPath: string,
-  crossfadeDuration: number
+  transitionDuration: number
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error("No segments provided for concatenation");
@@ -187,65 +222,59 @@ export async function concatenateWithCrossfades(
     return;
   }
 
-  // For SILENCE transition style (crossfadeDuration <= 0), use concat demuxer
+  // For SILENCE transition style (transitionDuration <= 0), use concat demuxer
   // with silence gaps inserted between segments
-  if (crossfadeDuration <= 0) {
+  if (transitionDuration <= 0) {
     await concatenateWithSilenceGaps(segments, outputPath);
     return;
   }
 
-  // For crossfade transitions, build a complex filter chain.
-  // With N segments and N-1 crossfades, we chain acrossfade filters pairwise.
-  // Each acrossfade merges two streams into one, which then feeds the next.
-  //
-  // Strategy: iteratively merge pairs using acrossfade.
-  // To avoid overly complex single-pass filter graphs, we use a multi-pass
-  // approach: merge segments pairwise until one remains.
+  // For all other transition styles, use concat demuxer with stinger sounds
+  // between segments. This avoids the voice-overlap problem of acrossfade.
+  await concatenateWithStingers(segments, outputPath);
+}
 
-  // For practical reliability, we use a sequential merge approach:
-  // merge segment 0 and 1 into temp, then merge temp and segment 2, etc.
-
+async function concatenateWithStingers(
+  segments: AudioSegment[],
+  outputPath: string
+): Promise<void> {
   const tempDir = join(
     tmpdir(),
-    `poddigest-crossfade-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `poddigest-stinger-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   await fs.mkdir(tempDir, { recursive: true });
 
   try {
-    let currentPath = segments[0].filePath;
+    // Generate the stinger and silence pad files once
+    const stingerPath = join(tempDir, "stinger.mp3");
+    const silencePadPath = join(tempDir, "silence-pad.mp3");
+    await generateStinger(stingerPath, 0.3);
+    await generateSilencePad(silencePadPath, 0.15);
 
-    for (let i = 1; i < segments.length; i++) {
-      const nextPath = segments[i].filePath;
-      const mergedPath =
-        i === segments.length - 1
-          ? outputPath
-          : join(tempDir, `merge-${i}.mp3`);
-
-      // Clamp crossfade duration to not exceed either segment's duration
-      const currentDuration = await probeDuration(currentPath);
-      const nextDuration = await probeDuration(nextPath);
-      const safeCrossfade = Math.min(
-        crossfadeDuration,
-        currentDuration * 0.5,
-        nextDuration * 0.5
-      );
-
-      const command = ffmpeg()
-        .input(currentPath)
-        .input(nextPath)
-        .complexFilter([
-          `[0:a][1:a]acrossfade=d=${safeCrossfade}:c1=tri:c2=tri[out]`,
-        ])
-        .outputOptions(["-map", "[out]"])
-        .audioCodec("libmp3lame")
-        .audioBitrate("192k")
-        .audioFrequency(44100)
-        .audioChannels(2)
-        .output(mergedPath);
-
-      await runFfmpeg(command);
-      currentPath = mergedPath;
+    // Build the concat file list: segment [pad + stinger + pad] segment ...
+    const concatLines: string[] = [];
+    for (let i = 0; i < segments.length; i++) {
+      concatLines.push(`file '${segments[i].filePath}'`);
+      if (i < segments.length - 1) {
+        concatLines.push(`file '${silencePadPath}'`);
+        concatLines.push(`file '${stingerPath}'`);
+        concatLines.push(`file '${silencePadPath}'`);
+      }
     }
+
+    const concatListPath = join(tempDir, "concat-list.txt");
+    await fs.writeFile(concatListPath, concatLines.join("\n"), "utf-8");
+
+    const command = ffmpeg()
+      .input(concatListPath)
+      .inputOptions(["-f", "concat", "-safe", "0"])
+      .audioCodec("libmp3lame")
+      .audioBitrate("192k")
+      .audioFrequency(44100)
+      .audioChannels(2)
+      .output(outputPath);
+
+    await runFfmpeg(command);
   } finally {
     await cleanupTempFiles(tempDir);
   }
@@ -386,20 +415,18 @@ function measureLoudness(inputPath: string): Promise<LoudnessMeasurements> {
   });
 }
 
-// ─── Crossfade Duration by Transition Style ─────────────────────
+// ─── Transition Duration by Style ───────────────────────────────
+// Returns the total time added between segments for chapter timing.
+// Non-SILENCE styles use a stinger (~0.3s) with padding (~0.15s each side) = ~0.6s.
+// SILENCE uses a 0.5s gap. Returns 0 for SILENCE to signal the silence-gap path.
 
-function getCrossfadeDuration(transitionStyle: string): number {
+function getTransitionDuration(transitionStyle: string): number {
   switch (transitionStyle) {
-    case "STINGER":
-      return 0.3;
-    case "SOFT_FADE":
-      return 2.0;
-    case "WHOOSH":
-      return 0.5;
     case "SILENCE":
       return 0; // Signal to use silence gaps instead
     default:
-      return 1.0;
+      // All non-silence styles: pad (0.15s) + stinger (0.3s) + pad (0.15s)
+      return 0.6;
   }
 }
 
@@ -440,7 +467,7 @@ export async function assembleDigest(
     });
 
     const { config, clips } = digest;
-    const crossfadeDuration = getCrossfadeDuration(config.transitionStyle);
+    const transitionDuration = getTransitionDuration(config.transitionStyle);
 
     // Sort narration audios by position
     const sortedNarrations = [...narrationAudios].sort(
@@ -549,24 +576,44 @@ export async function assembleDigest(
       duration: outroDuration,
     });
 
-    // ── Step 5: Concatenate with crossfades ─────────────────────
+    // ── Step 5: Concatenate with transitions ────────────────────
 
     const rawOutputPath = join(tempDir, "raw-digest.mp3");
-    await concatenateWithCrossfades(segments, rawOutputPath, crossfadeDuration);
+    await concatenateWithCrossfades(segments, rawOutputPath, transitionDuration);
 
     // ── Step 6: Normalize loudness ──────────────────────────────
 
     const normalizedPath = join(tempDir, "normalized-digest.mp3");
     await normalizeLoudness(rawOutputPath, normalizedPath, -16);
 
-    // ── Step 7: Build chapter markers ───────────────────────────
-
     const finalPath = normalizedPath;
+
+    // ── Step 6b: Write ID3 metadata ─────────────────────────────
+    // Use node-id3 to write tags directly — avoids fluent-ffmpeg
+    // argument parsing issues with metadata flags.
+
+    NodeID3.write(
+      {
+        title: digest.title,
+        artist: "PodDigest AI",
+        album: "PodDigest Weekly",
+        genre: "Podcast",
+        year: String(new Date().getFullYear()),
+      },
+      finalPath
+    );
+
+    // ── Step 7: Build chapter markers ───────────────────────────
 
     const chapters: Chapter[] = [];
     let cumulativeTime = 0;
+    // Gap between segments: stinger mode uses pad+stinger+pad (0.6s),
+    // silence mode uses a 0.5s silence gap
+    const gapDuration = transitionDuration > 0 ? transitionDuration : 0.5;
 
-    for (const segment of segments) {
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+
       if (segment.type === "clip" && segment.title) {
         chapters.push({
           title: segment.title,
@@ -575,15 +622,11 @@ export async function assembleDigest(
         });
       }
 
-      // Account for crossfade overlap (segments overlap by crossfadeDuration
-      // except for silence mode where there is a 0.5s gap instead)
-      if (crossfadeDuration > 0 && cumulativeTime > 0) {
-        cumulativeTime += segment.duration - crossfadeDuration;
-      } else if (crossfadeDuration <= 0 && cumulativeTime > 0) {
-        // Silence mode: segment duration + 0.5s gap
-        cumulativeTime += segment.duration + 0.5;
-      } else {
-        cumulativeTime += segment.duration;
+      cumulativeTime += segment.duration;
+
+      // Add gap duration between segments (not after the last one)
+      if (i < segments.length - 1) {
+        cumulativeTime += gapDuration;
       }
     }
 
@@ -598,7 +641,7 @@ export async function assembleDigest(
       }
     }
 
-    // ── Step 9: Upload to S3 ────────────────────────────────────
+    // ── Step 8: Upload to S3 ────────────────────────────────────
 
     const s3Key = `digests/${digestId}/digest.mp3`;
     const fileBuffer = await fs.readFile(finalPath);
