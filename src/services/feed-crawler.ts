@@ -99,10 +99,13 @@ export function parseDuration(durationStr: string | undefined): number | null {
  *
  * Returns the full Episode records that were newly created or updated.
  */
-export async function crawlNewEpisodes(podcastId: string) {
+export async function crawlNewEpisodes(podcastId: string, since?: Date) {
   const podcast = await prisma.podcast.findUniqueOrThrow({
     where: { id: podcastId },
   });
+
+  // Use lastCrawledAt, or the explicit since date, or default to 7 days ago
+  const cutoffDate = podcast.lastCrawledAt ?? since ?? new Date(Date.now() - 7 * 86400000);
 
   console.log(
     `[feed-crawler] Crawling feed for "${podcast.title}" (${podcast.feedUrl})`
@@ -120,12 +123,8 @@ export async function crawlNewEpisodes(podcastId: string) {
     // Skip items that have no audio enclosure
     if (!item.audioUrl) continue;
 
-    // Only process episodes published after the last crawl
-    if (
-      podcast.lastCrawledAt &&
-      item.publishedAt &&
-      item.publishedAt <= podcast.lastCrawledAt
-    ) {
+    // Only process episodes published after the cutoff date
+    if (item.publishedAt && item.publishedAt <= cutoffDate) {
       continue;
     }
 

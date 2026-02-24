@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/api/auth";
 import { prisma } from "@/lib/prisma";
 import { generateDigestSchema } from "@/lib/validators";
-import { pipelineQueue } from "@/lib/queue";
+import { crawlQueue } from "@/lib/queue";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -70,13 +70,13 @@ export async function POST(request: Request) {
       },
     });
 
-    await pipelineQueue.add(
+    await crawlQueue.add(
       {
         digestId: digest.id,
         userId: session.user.id,
         configId,
       },
-      { jobId: `digest-${digest.id}` },
+      { jobId: `crawl-${digest.id}` },
     );
 
     return NextResponse.json({ digest }, { status: 202 });
